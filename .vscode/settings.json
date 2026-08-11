@@ -1,0 +1,5 @@
+{
+  "cmake.ignoreCMakeListsMissing": true,
+  "dart.flutterSdkPath": ".fvm/versions/3.44.8",
+  "dart.runPubGetOnPubspecChanges": "prompt"
+}
