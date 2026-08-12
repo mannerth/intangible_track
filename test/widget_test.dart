@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:intangible_track/features/map/models.dart';
+import 'package:intangible_track/features/map/interactive_map.dart';
+import 'package:intangible_track/features/map/providers.dart' as map;
 import 'package:intangible_track/main.dart';
 import 'package:intangible_track/ui/pages/map_page.dart';
 import 'package:intangible_track/ui/pages/province_detail_page.dart';
@@ -42,6 +45,9 @@ void mockAssets(WidgetTester tester) {
       if (key == 'AssetManifest.bin' || key == 'AssetManifest.json') {
         return manifest;
       }
+      if (key.startsWith('assets/map/')) {
+        return ByteData.view(utf8.encode('{}').buffer);
+      }
       if (assets.contains(key)) {
         return ByteData.view(png.buffer);
       }
@@ -50,10 +56,21 @@ void mockAssets(WidgetTester tester) {
   );
 }
 
+Widget appWithMapOverrides({Widget child = const SizedBox.shrink()}) {
+  return ProviderScope(
+    overrides: [
+      map.mapRegionsProvider.overrideWith(
+        (ref, mode) => Future.value(const <MapRegion>[]),
+      ),
+    ],
+    child: child,
+  );
+}
+
 void main() {
   testWidgets('App boots to the map tab', (WidgetTester tester) async {
     mockAssets(tester);
-    await tester.pumpWidget(const ProviderScope(child: MyApp()));
+    await tester.pumpWidget(appWithMapOverrides(child: const MyApp()));
 
     await tester.pumpAndSettle();
 
@@ -68,7 +85,7 @@ void main() {
     WidgetTester tester,
   ) async {
     mockAssets(tester);
-    await tester.pumpWidget(const ProviderScope(child: MyApp()));
+    await tester.pumpWidget(appWithMapOverrides(child: const MyApp()));
 
     await tester.pumpAndSettle();
     await tester.tap(find.text('发现').last);
@@ -83,7 +100,7 @@ void main() {
   ) async {
     mockAssets(tester);
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: MapPage())),
+      appWithMapOverrides(child: const MaterialApp(home: MapPage())),
     );
     await tester.pumpAndSettle();
 
@@ -93,6 +110,60 @@ void main() {
     final pairCenter = (chinaCenter.dx + worldCenter.dx) / 2;
 
     expect(pairCenter, moreOrLessEquals(screenCenter, epsilon: 1));
+  });
+
+  testWidgets('Map page shows region bottom sheet on tap', (
+    WidgetTester tester,
+  ) async {
+    mockAssets(tester);
+    final region = MapRegion(
+      mapKey: '420000',
+      nameZh: '湖北省',
+      nameEn: 'Hubei',
+      geometry: RegionGeometry([
+        [
+          const [
+            GeoPoint(0, 0),
+            GeoPoint(10, 0),
+            GeoPoint(10, 10),
+            GeoPoint(0, 10),
+            GeoPoint(0, 0),
+          ],
+        ],
+      ]),
+      summary: const RegionSummary(
+        code: 'CN-42',
+        type: RegionType.province,
+        nameZh: '湖北省',
+        nameEn: 'Hubei',
+        description: '湖北省非物质文化遗产资源丰富。',
+        mapKey: '420000',
+        totalCount: 100,
+        levelCounts: LevelCounts(world: 2, national: 30, provincial: 68),
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          map.mapRegionsProvider.overrideWith(
+            (ref, mode) => Future.value([region]),
+          ),
+        ],
+        child: const MaterialApp(home: MapPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(tester.getCenter(find.byType(InteractiveMap)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('湖北省'), findsWidgets); // 弹窗标题（页面卡片也有）
+    expect(find.text('取消'), findsOneWidget);
+    expect(find.text('世界级名录'), findsOneWidget);
+    expect(find.text('国家级名录'), findsOneWidget);
+    expect(find.text('省级重点保护'), findsOneWidget);
+    expect(find.text('进入该省名录库'), findsOneWidget);
+    expect(find.text('湖北省非物质文化遗产资源丰富。'), findsOneWidget);
   });
 
   testWidgets('Search header: search icon inside field and icons aligned', (

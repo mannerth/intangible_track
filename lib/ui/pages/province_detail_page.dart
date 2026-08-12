@@ -41,10 +41,21 @@ class _ProvinceDetailPageState extends ConsumerState<ProvinceDetailPage> {
             onChanged: (index) => setState(() => _selectedLevel = index),
           ),
           const SizedBox(height: 28),
-          for (var i = 0; i < visible.length; i++) ...[
-            _HeritageCard(entry: visible[i]),
-            if (i < visible.length - 1) const SizedBox(height: 8),
-          ],
+          if (visible.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 48),
+              child: Center(
+                child: Text(
+                  '暂无名录数据',
+                  style: TextStyle(fontSize: 14, color: AppColors.textHint),
+                ),
+              ),
+            )
+          else
+            for (var i = 0; i < visible.length; i++) ...[
+              _HeritageCard(entry: visible[i]),
+              if (i < visible.length - 1) const SizedBox(height: 8),
+            ],
         ],
       ),
     );
