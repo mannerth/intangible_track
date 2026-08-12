@@ -1,17 +1,9 @@
 # intangible_track
 
-A new Flutter project.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+| time cost| work |
+|----------|------|
+|3h|依赖配置、启动页与应用图标配置|
+|8h|视觉稿UI基础页面还原、Mock数据测试|
+|5h|核心地图组件封装，支持移动、缩放、选中高亮并自适应大小、名称标注|
+|4h|地图名称标注算法优化，世界地图优先使用Natural Earth官方校准的LABEL_X / LABEL_Y，回退算法为计算面积质心；中国地图使用Mapbox polylabel 算法计算各省内切圆圆心|
