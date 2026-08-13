@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/providers.dart';
+import '../../api/providers.dart';
 import 'map_geometry_loader.dart';
 import 'map_region_repository.dart';
 import 'models.dart';
@@ -18,7 +19,7 @@ final mapModeProvider = NotifierProvider<MapModeController, MapMode>(
 );
 
 final mapRegionRepositoryProvider = Provider<MapRegionRepository>(
-  (ref) => const MapRegionRepository(),
+  (ref) => MapRegionRepository(ref.watch(regionRepositoryProvider)),
 );
 
 /// 几何数据（内置 GeoJSON）

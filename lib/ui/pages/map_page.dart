@@ -265,8 +265,8 @@ class _RegionSheet extends StatelessWidget {
                         Icons.favorite_border_outlined,
                         color: Colors.redAccent[100],
                       ),
-                      onPressed: null, 
-                    )
+                      onPressed: null,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),

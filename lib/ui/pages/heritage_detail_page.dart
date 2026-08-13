@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../api/providers.dart';
+import '../../api/models/api_models.dart';
 import '../../common/app_theme.dart';
 
-class HeritageDetailPage extends StatefulWidget {
+class HeritageDetailPage extends ConsumerStatefulWidget {
   const HeritageDetailPage({super.key, required this.title});
   final String title;
 
   @override
-  State<HeritageDetailPage> createState() => _HeritageDetailPageState();
+  ConsumerState<HeritageDetailPage> createState() => _HeritageDetailPageState();
 }
 
-class _HeritageDetailPageState extends State<HeritageDetailPage> {
+class _HeritageDetailPageState extends ConsumerState<HeritageDetailPage> {
   bool _gallery = false;
   bool _favorite = false;
 
   @override
   Widget build(BuildContext context) {
+    final detail = ref.watch(heritageDetailProvider(widget.title));
     final title = widget.title == '非遗详情' ? '汉绣' : widget.title;
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -139,7 +143,21 @@ class _HeritageDetailPageState extends State<HeritageDetailPage> {
                         ),
                         const Divider(height: 1, color: Color(0xFFB9B9B9)),
                         const SizedBox(height: 24),
-                        _gallery ? const _Gallery() : const _Process(),
+                        detail.when(
+                          loading: () => const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(40),
+                              child: CircularProgressIndicator(
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ),
+                          error: (_, stackTrace) =>
+                              _gallery ? const _Gallery() : const _Process(),
+                          data: (value) => _gallery
+                              ? _Gallery(assets: value.mediaAssets)
+                              : _Process(steps: value.processSteps),
+                        ),
                       ],
                     ),
                   ),
@@ -216,16 +234,12 @@ class _Tab extends StatelessWidget {
 }
 
 class _Process extends StatelessWidget {
-  const _Process();
-  static const steps = [
-    ('第一步 设计与上稿', '这是刺绣前的准备工作。首先需要在纸上设计好图案，然后将设计好的纹样通过复写纸等方式描摹到绣布上，作为刺绣的蓝本。'),
-    ('第二步 上绷', '将描好图案的绣布紧紧绷在绣花绷（如圆绷或绷架）上。确保绣布绷紧、平整，这是保证刺绣质量的基础。'),
-    ('第三步 配线与劈丝', '根据图案的配色需要准备绣线。汉绣用线讲究，为了绣制精细部分，常常需要将一根绣线“劈”成更细的几股。'),
-  ];
+  const _Process({this.steps});
+  final List<ProcessStep>? steps;
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      for (var i = 0; i < steps.length; i++)
+      for (var i = 0; i < (steps?.length ?? 0); i++)
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -245,7 +259,7 @@ class _Process extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (i < steps.length - 1)
+                  if (i < steps!.length - 1)
                     Container(
                       width: 3,
                       height: 126,
@@ -267,7 +281,7 @@ class _Process extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      steps[i].$1,
+                      steps![i].title,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -275,7 +289,7 @@ class _Process extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      steps[i].$2,
+                      steps![i].description,
                       style: const TextStyle(
                         fontSize: 13,
                         height: 1.25,
@@ -293,7 +307,8 @@ class _Process extends StatelessWidget {
 }
 
 class _Gallery extends StatelessWidget {
-  const _Gallery();
+  const _Gallery({this.assets});
+  final List<MediaAsset>? assets;
 
   static const _images = [
     'assets/hanxiu/detail_gallery.png',
@@ -304,7 +319,7 @@ class _Gallery extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      for (var i = 0; i < _images.length; i++)
+      for (var i = 0; i < (assets?.length ?? _images.length); i++)
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -324,7 +339,7 @@ class _Gallery extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (i < _images.length - 1)
+                  if (i < (assets?.length ?? _images.length) - 1)
                     Container(
                       width: 3,
                       height: 125,
@@ -339,13 +354,48 @@ class _Gallery extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 20),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(5),
-                  child: Image.asset(
-                    _images[i],
-                    height: 125,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                  ),
+                  child: assets == null || assets!.isEmpty
+                      ? Image.asset(
+                          _images[i],
+                          height: 125,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
+                        )
+                      : Image.network(
+                          // API 的 thumbnailUrl 为空时回退原始媒体 URL。
+                          assets![i].thumbnailUrl ?? assets![i].url,
+                          height: 125,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
+                          loadingBuilder: (context, child, progress) =>
+                              progress == null
+                              ? child
+                              : const ColoredBox(
+                                  color: Color(0xFFF5F5F5),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppColors.accent,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                          errorBuilder: (context, error, stackTrace) =>
+                              const ColoredBox(
+                                color: Color(0xFFF5F5F5),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textLight,
+                                  ),
+                                ),
+                              ),
+                        ),
                 ),
               ),
             ),

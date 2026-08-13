@@ -7,6 +7,7 @@ import '../ui/pages/heritage_detail_page.dart';
 import '../ui/pages/login_page.dart';
 import '../ui/pages/map_page.dart';
 import '../ui/pages/heritage_poster_page.dart';
+import '../ui/pages/posters_page.dart';
 import '../ui/pages/profile_page.dart';
 import '../ui/pages/province_detail_page.dart';
 import '../ui/shell/main_shell.dart';
@@ -56,6 +57,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     path: 'favorites',
                     name: 'favorites',
                     builder: (context, state) => const FavoritesPage(),
+                  ),
+                  GoRoute(
+                    path: 'posters',
+                    name: 'posters',
+                    builder: (context, state) => const PostersPage(),
                   ),
                 ],
               ),

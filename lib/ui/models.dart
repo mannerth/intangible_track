@@ -37,12 +37,14 @@ const List<HeritageTopic> kHotTopics = [
 /// 省份名录中的非遗条目
 class HeritageEntry {
   const HeritageEntry({
+    this.id,
     required this.title,
     required this.category,
     required this.level,
     required this.description,
   });
 
+  final String? id;
   final String title;
   final String category;
   final String level;

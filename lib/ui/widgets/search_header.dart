@@ -21,7 +21,7 @@ class SearchHeader extends StatefulWidget implements PreferredSizeWidget {
     this.controller,
     this.onChanged,
     this.onSubmitted,
-    this.onIconPress
+    this.onIconPress,
   }) : mode = SearchHeaderMode.searchOnly,
        title = null,
        onBack = null;

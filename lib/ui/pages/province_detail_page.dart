@@ -23,7 +23,16 @@ class _ProvinceDetailPageState extends ConsumerState<ProvinceDetailPage> {
   @override
   Widget build(BuildContext context) {
     final province = ref.watch(currentProvinceProvider);
-    final entries = ref.watch(provinceEntriesProvider(province.name));
+    final remoteEntries = ref.watch(
+      remoteHeritageEntriesProvider((
+        regionCode: null,
+        level: null,
+        query: null,
+      )),
+    );
+    final List<HeritageEntry> entries =
+        remoteEntries.asData?.value ??
+        ref.watch(provinceEntriesProvider(province.name));
     final visible = _selectedLevel == 0
         ? entries
         : entries.where((e) => e.level == _levels[_selectedLevel]).toList();

@@ -106,7 +106,7 @@ class ProfilePage extends StatelessWidget {
                             icon: Icons.auto_awesome_outlined,
                             title: '生成海报',
                             subtitle: '查看所有已生成海报',
-                            onTap: () {},
+                            onTap: () => context.pushNamed('posters'),
                           ),
                         ),
                       ],

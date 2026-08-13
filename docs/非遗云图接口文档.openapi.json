@@ -1,0 +1,3152 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "非遗云图接口文档",
+    "description": "非遗云图完整后端接口定义，可直接导入 Apifox。\n\n接口版本：v1；接口总数：18。\n\n功能边界：\n- 覆盖中国/世界地图、地区搜索、非遗名录、详情、个人中心、收藏和海报；\n- 非遗真实内容由人工整理后直接写入数据库，不提供 AI、内容管理或导入接口；\n- 登录页只保留“统一认证登录”按钮，本系统不接收或保存学号密码。\n\n鉴权约定：\n- 公开接口：统一认证发起/回调/票据交换、地图、地区、搜索和筛选项；\n- 可选 Bearer JWT：非遗列表和详情；匿名时 `isFavorited` 为 null；\n- 必须 Bearer JWT：个人中心、收藏和海报；\n- 刷新与退出：使用 `refresh_token` HttpOnly Cookie。\n- 对必须鉴权的接口，令牌缺失、无效或过期均返回 401。\n\n统一响应：\n- JSON 成功响应包含 `code`、`message`、`requestId`、`data`；\n- JSON 错误响应包含 `code`、`message`、`requestId`、`details`；\n- 204 和 302 响应无 JSON 响应体。\n\nSDU Pass 学校 JWT 当前使用 HS256，载荷仅依赖 `casID`、`name`、`exp`。\n验签 key 必须由控制台 JWT 密钥按官方文档使用 PBKDF2WithHmacSHA256 派生，\n并校验签名算法和 `exp`；学校短期 JWT 不得充当项目长期会话。\n",
+    "version": "v1",
+    "contact": {
+      "name": "非遗云图项目组"
+    }
+  },
+  "tags": [
+    {
+      "name": "用户端"
+    },
+    {
+      "name": "用户端/认证"
+    },
+    {
+      "name": "用户端/地图与搜索"
+    },
+    {
+      "name": "用户端/非遗名录"
+    },
+    {
+      "name": "用户端/个人中心"
+    },
+    {
+      "name": "用户端/收藏"
+    },
+    {
+      "name": "用户端/海报"
+    }
+  ],
+  "paths": {
+    "/auth/sso/authorize": {
+      "get": {
+        "summary": "发起山东大学统一认证",
+        "deprecated": false,
+        "description": "**鉴权：无需鉴权。**\n\n创建短期登录状态，保存安全的站内返回路径，并 302 跳转到山东大学统一认证官网。\n项目登录页只需将“统一认证登录”按钮指向本接口。\n",
+        "operationId": "startSduSsoLogin",
+        "tags": [
+          "用户端/认证"
+        ],
+        "parameters": [
+          {
+            "name": "returnPath",
+            "in": "query",
+            "description": "登录完成后的站内相对路径，默认 `/profile`。\n必须以单个 `/` 开头，不得包含协议、域名或以 `//` 开头。\n",
+            "required": false,
+            "example": "/profile",
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "default": "/profile"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "跳转山东大学统一认证登录页",
+            "headers": {
+              "Location": {
+                "example": "https://i.sdu.edu.cn/pass-api/login/page?forward=https%3A%2F%2Fapi.example.com%2Fapi%2Fv1%2Fauth%2Fsso%2Fcallback",
+                "required": false,
+                "description": "SDU Pass JWT 登录地址，forward 为 URL 编码后的固定回调地址",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "Set-Cookie": {
+                "required": false,
+                "description": "短期、HttpOnly 的登录状态 Cookie",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest",
+            "description": "请求参数错误"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/sso/callback": {
+      "get": {
+        "summary": "接收山东大学统一认证回调",
+        "deprecated": false,
+        "description": "**鉴权：无需 Bearer JWT；仅供统一认证服务回调。**\n\n接收学校签发的 60 秒一次性 code；后端立即调用 SDU Pass `/auth/token` 换取并验证\n学校 JWT，按 `casID` 创建或更新本地用户，最后生成项目一次性登录票据。\n成功和可恢复失败均跳回前端，不向 URL 暴露学校 JWT或本地 JWT。\n具体 PBKDF2WithHmacSHA256 派生参数以 SDU Pass 官方文档为准，密钥只保存在服务端。\n",
+        "operationId": "handleSduSsoCallback",
+        "tags": [
+          "用户端/认证"
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "客户端可提供的链路请求 ID；缺失时由服务端生成",
+            "required": false,
+            "example": "",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "成功时跳转 `/auth/callback?ticket=...`；失败时跳转 `/login?error=SSO_CODE_INVALID` 等前端错误页。",
+            "headers": {
+              "Location": {
+                "required": false,
+                "description": "前端回跳地址",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          },
+          "502": {
+            "$ref": "#/components/responses/SsoUpstreamError",
+            "description": "山东大学统一认证上游调用失败"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/sso/exchange": {
+      "post": {
+        "summary": "交换项目访问 JWT",
+        "deprecated": false,
+        "description": "**鉴权：无需 Bearer JWT；使用一次性 `loginTicket`。**\n\n使用项目签发的 60 秒一次性登录票据换取访问 JWT，同时通过 HttpOnly Cookie\n写入刷新 JWT。登录票据只能成功使用一次。\n本地调试访问http://localhost:9100/api/v1/auth/sso/authorize?returnPath=/profile",
+        "operationId": "exchangeLoginTicket",
+        "tags": [
+          "用户端/认证"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginTicketRequest"
+              },
+              "example": {
+                "loginTicket": "lt_01K0EXAMPLE"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "登录票据交换成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "required": false,
+                "description": "refresh_token 刷新 JWT；生产环境使用 Secure、HttpOnly、SameSite=Lax",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "登录票据无效、过期或已使用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "LOGIN_TICKET_INVALID",
+                  "message": "登录票据无效、已过期或已使用",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "description": "学校身份校验结果无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "SSO_TOKEN_INVALID",
+                  "message": "统一认证身份校验失败",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "summary": "刷新项目访问 JWT",
+        "deprecated": false,
+        "description": "**鉴权：必须携带有效 `refresh_token` HttpOnly Cookie。**\n\n校验并轮换刷新 JWT，签发新的访问 JWT。旧刷新 JWT 立即失效。\n",
+        "operationId": "refreshAccessToken",
+        "tags": [
+          "用户端/认证"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "",
+            "required": true,
+            "example": "http://localhost:5173",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "刷新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "required": false,
+                "description": "轮换后的 refresh_token Cookie",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "刷新会话失效、过期、撤销或已轮换",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "REFRESH_SESSION_INVALID",
+                  "message": "登录会话已失效，请重新登录",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "refreshCookie": []
+          }
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "退出本地登录",
+        "deprecated": false,
+        "description": "**鉴权：必须携带有效 `refresh_token` HttpOnly Cookie。**\n\n撤销当前本地刷新会话并清空刷新 Cookie，不负责退出学校统一认证。\n",
+        "operationId": "logout",
+        "tags": [
+          "用户端/认证"
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "",
+            "required": true,
+            "example": "http://localhost:5173",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已退出；无响应体",
+            "headers": {
+              "Set-Cookie": {
+                "required": false,
+                "description": "清空 refresh_token Cookie",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "refreshCookie": []
+          }
+        ]
+      }
+    },
+    "/regions": {
+      "get": {
+        "summary": "获取地图地区列表",
+        "deprecated": false,
+        "description": "**鉴权：无需鉴权。**\n\nCHINA 返回中国省级地图节点；WORLD 返回国家地图节点。\n统计值由已发布非遗条目的认定数据聚合。\n",
+        "operationId": "listMapRegions",
+        "tags": [
+          "用户端/地图与搜索"
+        ],
+        "parameters": [
+          {
+            "name": "mapMode",
+            "in": "query",
+            "description": "地图模式",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MapMode"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "地区中英文名称模糊过滤",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "地图地区列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionListResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest",
+            "description": "请求参数错误"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/regions/{regionCode}": {
+      "get": {
+        "summary": "获取地区详情",
+        "deprecated": false,
+        "description": "**鉴权：无需鉴权。**\n\n获取省份或国家抽屉所需的介绍、统计、父级、面包屑\n",
+        "operationId": "getRegion",
+        "tags": [
+          "用户端/地图与搜索"
+        ],
+        "parameters": [
+          {
+            "name": "regionCode",
+            "in": "path",
+            "description": "稳定地区编码，例如 CN-51 或 FR",
+            "required": true,
+            "example": "CN-51",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "地区详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionDetailResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/search": {
+      "get": {
+        "summary": "首页统一搜索",
+        "deprecated": false,
+        "description": "**鉴权：无需鉴权。**\n\n同时模糊搜索地区和已发布非遗，供首页搜索框和建议列表使用。\n",
+        "operationId": "searchRegionsAndHeritage",
+        "tags": [
+          "用户端/地图与搜索"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "匹配非遗中英文名、别名和地区中英文名",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "mapMode",
+            "in": "query",
+            "description": "限制地区结果范围",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MapMode"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "每一类的最大返回数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分组搜索结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest",
+            "description": "请求参数错误"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/heritage/filter-options": {
+      "get": {
+        "summary": "获取非遗筛选项",
+        "deprecated": false,
+        "description": "**鉴权：无需鉴权。**\n\n返回固定级别和数据库中启用的类别，按显示顺序排列。\n",
+        "operationId": "getHeritageFilterOptions",
+        "tags": [
+          "用户端/非遗名录"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "筛选项",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterOptionsResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": []
+      }
+    },
+    "/heritage-items": {
+      "get": {
+        "summary": "查询非遗名录",
+        "deprecated": false,
+        "description": "**鉴权：可匿名访问，也可携带 Bearer JWT。**\n\n同时服务发现页、省份名录页和国家名录页。\n同一筛选维度内为 OR，不同维度之间为 AND；地区筛选包含全部下级地区。\n匿名请求的 `isFavorited` 为 null；携带有效访问 JWT 时返回真实收藏状态。\n",
+        "operationId": "listHeritageItems",
+        "tags": [
+          "用户端/非遗名录"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "中英文名、别名、简介模糊搜索",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "regionCode",
+            "in": "query",
+            "description": "地区编码；包含其所有下级地区",
+            "required": false,
+            "example": "CN-51",
+            "schema": {
+              "type": "string",
+              "maxLength": 32
+            }
+          },
+          {
+            "name": "levels",
+            "in": "query",
+            "description": "多个级别使用重复查询参数，如 `levels=WORLD&levels=NATIONAL`",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/components/schemas/HeritageLevel"
+              }
+            }
+          },
+          {
+            "name": "categoryCodes",
+            "in": "query",
+            "description": "多个类别使用重复查询参数",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "排序方式；默认按人工显示顺序、中文名和 ID 稳定排序",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DEFAULT",
+                "NAME_ASC",
+                "NEWEST_DESIGNATION"
+              ],
+              "default": "DEFAULT"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "非遗分页列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeritagePageResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest",
+            "description": "请求参数错误"
+          },
+          "401": {
+            "description": "提供了无效或过期的可选访问 JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "ACCESS_TOKEN_EXPIRED",
+                  "message": "访问令牌已过期",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/heritage-items/{heritageId}": {
+      "get": {
+        "summary": "获取非遗详情",
+        "deprecated": false,
+        "description": "**鉴权：可匿名访问，也可携带 Bearer JWT。**\n\n返回详情背景、认定、类别、工艺流程、图片和视频等完整人工内容。\n",
+        "operationId": "getHeritageItem",
+        "tags": [
+          "用户端/非遗名录"
+        ],
+        "parameters": [
+          {
+            "name": "heritageId",
+            "in": "path",
+            "description": "非遗 UUID",
+            "required": true,
+            "example": "019fa8f4-11d5-7000-8000-000000000101",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "非遗详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeritageDetailResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "description": "提供了无效或过期的可选访问 JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "ACCESS_TOKEN_EXPIRED",
+                  "message": "访问令牌已过期",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/me": {
+      "get": {
+        "summary": "获取当前用户",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n返回统一认证姓名、学工号以及收藏和海报数量。\n",
+        "operationId": "getCurrentUser",
+        "tags": [
+          "用户端/个人中心"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前用户",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/me/favorites": {
+      "get": {
+        "summary": "查询我的收藏",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n按收藏时间倒序返回当前用户收藏的已发布非遗。\n",
+        "operationId": "listMyFavorites",
+        "tags": [
+          "用户端/收藏"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "收藏分页列表；每项 isFavorited 恒为 true",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeritagePageResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/me/favorites/{heritageId}": {
+      "put": {
+        "summary": "收藏非遗",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n幂等收藏；已经收藏时仍返回成功。\n",
+        "operationId": "favoriteHeritageItem",
+        "tags": [
+          "用户端/收藏"
+        ],
+        "parameters": [
+          {
+            "name": "heritageId",
+            "in": "path",
+            "description": "非遗 UUID",
+            "required": true,
+            "example": "019fa8f4-11d5-7000-8000-000000000101",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "收藏状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavoriteStateResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "取消收藏",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n幂等取消；目标未收藏时仍返回 204。\n",
+        "operationId": "unfavoriteHeritageItem",
+        "tags": [
+          "用户端/收藏"
+        ],
+        "parameters": [
+          {
+            "name": "heritageId",
+            "in": "path",
+            "description": "非遗 UUID",
+            "required": true,
+            "example": "019fa8f4-11d5-7000-8000-000000000101",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已取消收藏；无响应体",
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/me/posters": {
+      "get": {
+        "summary": "查询我的海报",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n按最近成功生成时间倒序返回当前用户的海报。\n",
+        "operationId": "listMyPosters",
+        "tags": [
+          "用户端/海报"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "海报分页列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosterPageResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "生成或复用非遗海报",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n后端使用固定模板同步生成并保存海报，不调用 AI。\n每个用户和非遗项目最多保留一条记录；内容及模板未变化时复用现有海报。\n",
+        "operationId": "createPoster",
+        "tags": [
+          "用户端/海报"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "客户端为一次用户操作生成的 UUID；同用户、同键、同请求体返回相同结果",
+            "required": true,
+            "example": "08f0c16a-5a06-4ad9-98f0-66c24262e88f",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePosterRequest"
+              },
+              "examples": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "复用了内容和模板均未变化的现有海报",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosterCreateResponse"
+                },
+                "example": {
+                  "code": "OK",
+                  "message": "success",
+                  "data": {
+                    "reused": true,
+                    "poster": {
+                      "id": "019fa8f4-11d5-7000-8000-000000000401",
+                      "heritageItem": {
+                        "id": "019fa8f4-11d5-7000-8000-000000000101",
+                        "code": "CN-SC-SJZZ",
+                        "nameZh": "蜀锦织造技艺",
+                        "coverImageUrl": "https://cdn.example.com/heritage/shujin/card.jpg"
+                      },
+                      "status": "READY",
+                      "thumbnailUrl": "https://cdn.example.com/signed/posters/401-thumb.jpg",
+                      "imageUrl": "https://cdn.example.com/signed/posters/401.jpg",
+                      "assetUrlExpiresAt": "2026-07-28T12:55:00Z",
+                      "templateVersion": "heritage-poster-v1",
+                      "contentVersion": 3,
+                      "generatedAt": "2026-07-28T12:45:00Z"
+                    }
+                  },
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "201": {
+            "description": "新生成或因内容/模板变化而重新生成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosterCreateResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "409": {
+            "description": "相同幂等键对应了不同请求体",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "CONFLICT",
+                  "message": "Idempotency-Key 已用于其他请求",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "422": {
+            "description": "海报所需人工内容不完整",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "POSTER_SOURCE_INCOMPLETE",
+                  "message": "海报素材不完整",
+                  "details": [
+                    {
+                      "field": "posterBackgroundUrl",
+                      "reason": "REQUIRED",
+                      "message": "缺少海报背景图"
+                    }
+                  ],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests",
+            "description": "请求频率过高"
+          },
+          "500": {
+            "description": "海报渲染、对象存储写入或服务内部失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "POSTER_GENERATION_FAILED",
+                  "message": "海报生成失败，请稍后重试",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/me/posters/{posterId}": {
+      "get": {
+        "summary": "获取我的海报详情",
+        "deprecated": false,
+        "description": "**鉴权：必须携带 Bearer JWT。**\n\n仅海报所有者可以访问。不存在或不属于当前用户均返回 404。\n每次读取重新签发短期图片 URL。\n",
+        "operationId": "getMyPoster",
+        "tags": [
+          "用户端/海报"
+        ],
+        "parameters": [
+          {
+            "name": "posterId",
+            "in": "path",
+            "description": "海报 UUID",
+            "required": true,
+            "example": "019fa8f4-11d5-7000-8000-000000000401",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "海报详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosterResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized",
+            "description": "未登录、访问 JWT 无效或已过期"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "资源不存在、未发布或对当前用户不可见"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError",
+            "description": "服务内部异常"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "webhooks": {},
+  "components": {
+    "schemas": {
+      "MapMode": {
+        "type": "string",
+        "enum": [
+          "CHINA",
+          "WORLD"
+        ],
+        "description": "地图模式"
+      },
+      "HeritageLevel": {
+        "type": "string",
+        "enum": [
+          "WORLD",
+          "NATIONAL",
+          "PROVINCIAL"
+        ],
+        "description": "世界级、国家级、省级"
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason",
+          "message"
+        ],
+        "properties": {
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "出错字段；非字段错误为 null 或省略"
+          },
+          "reason": {
+            "type": "string",
+            "description": "机器可读原因"
+          },
+          "message": {
+            "type": "string",
+            "description": "中文说明"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "details",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "业务错误码",
+            "examples": [
+              "INVALID_ARGUMENT"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "请求参数不合法"
+            ]
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "UserBasic": {
+        "type": "object",
+        "required": [
+          "id",
+          "campusId",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000001"
+            ]
+          },
+          "campusId": {
+            "type": "string",
+            "description": "学校 JWT casID，前端显示为学工号",
+            "examples": [
+              "20240001"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "张三"
+            ]
+          }
+        }
+      },
+      "LoginTicketRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "loginTicket"
+        ],
+        "properties": {
+          "loginTicket": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "examples": [
+              "lt_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "LoginData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn",
+          "user"
+        ],
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "本项目访问 JWT",
+            "examples": [
+              "eyJhbGciOiJIUzI1NiJ9..."
+            ]
+          },
+          "tokenType": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "访问 JWT 剩余秒数",
+            "examples": [
+              900
+            ]
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserBasic"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoginData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "RefreshData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn"
+        ],
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "examples": [
+              "eyJhbGciOiJIUzI1NiJ9..."
+            ]
+          },
+          "tokenType": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              900
+            ]
+          }
+        }
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/RefreshData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "LevelCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "WORLD",
+          "NATIONAL",
+          "PROVINCIAL"
+        ],
+        "properties": {
+          "WORLD": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              2
+            ]
+          },
+          "NATIONAL": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              134
+            ]
+          },
+          "PROVINCIAL": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              600
+            ]
+          }
+        }
+      },
+      "RegionCompact": {
+        "type": "object",
+        "required": [
+          "code",
+          "type",
+          "nameZh",
+          "nameEn"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "examples": [
+              "CN-51"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COUNTRY",
+              "PROVINCE",
+              "CITY",
+              "DISTRICT"
+            ],
+            "examples": [
+              "PROVINCE"
+            ]
+          },
+          "nameZh": {
+            "type": "string",
+            "examples": [
+              "四川省"
+            ]
+          },
+          "nameEn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Sichuan"
+            ]
+          }
+        }
+      },
+      "RegionSummary": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RegionCompact"
+          },
+          {
+            "type": "object",
+            "required": [
+              "description",
+              "mapKey",
+              "totalCount",
+              "levelCounts"
+            ],
+            "properties": {
+              "description": {
+                "type": "string",
+                "examples": [
+                  "巴蜀文化的重要发源地，汇聚众多民间智慧与非遗技艺。"
+                ]
+              },
+              "mapKey": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "与前端地图数据对应的键",
+                "examples": [
+                  "510000"
+                ]
+              },
+              "totalCount": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  736
+                ]
+              },
+              "levelCounts": {
+                "$ref": "#/components/schemas/LevelCounts"
+              }
+            }
+          }
+        ]
+      },
+      "RegionListData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mapMode",
+          "regions"
+        ],
+        "properties": {
+          "mapMode": {
+            "$ref": "#/components/schemas/MapMode"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegionSummary"
+            }
+          }
+        }
+      },
+      "RegionListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/RegionListData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "RegionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RegionSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "parent",
+              "breadcrumb"
+            ],
+            "properties": {
+              "parent": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RegionCompact"
+                  }
+                ]
+              },
+              "breadcrumb": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RegionCompact"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RegionDetailResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/RegionDetail"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "Location": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "countryCode",
+          "provinceCode",
+          "cityCode",
+          "displayText"
+        ],
+        "properties": {
+          "countryCode": {
+            "type": "string",
+            "examples": [
+              "CN"
+            ]
+          },
+          "provinceCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "CN-51"
+            ]
+          },
+          "cityCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "CN-51-CD"
+            ]
+          },
+          "displayText": {
+            "type": "string",
+            "examples": [
+              "中国·四川省成都市"
+            ]
+          }
+        }
+      },
+      "Badge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "code",
+          "name"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "LEVEL",
+              "CATEGORY"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "examples": [
+              "NATIONAL"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "国家级"
+            ]
+          }
+        }
+      },
+      "HeritageCard": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "nameZh",
+          "nameEn",
+          "location",
+          "summary",
+          "coverImageUrl",
+          "badges",
+          "isFavorited"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000101"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "examples": [
+              "CN-SC-SJZZ"
+            ]
+          },
+          "nameZh": {
+            "type": "string",
+            "examples": [
+              "蜀锦织造技艺"
+            ]
+          },
+          "nameEn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              null
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "summary": {
+            "type": "string",
+            "examples": [
+              "采用复杂挑花结本工艺的传统织锦技艺。"
+            ]
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/card.jpg"
+            ]
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Badge"
+            }
+          },
+          "isFavorited": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "匿名为 null；登录时为真实状态",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "HeritageDesignation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "year",
+          "batchName",
+          "authority"
+        ],
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/HeritageLevel"
+          },
+          "year": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              2006
+            ]
+          },
+          "batchName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "第一批"
+            ]
+          },
+          "authority": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "国务院"
+            ]
+          }
+        }
+      },
+      "HeritageCategory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "nameZh"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "examples": [
+              "TRADITIONAL_CRAFT"
+            ]
+          },
+          "nameZh": {
+            "type": "string",
+            "examples": [
+              "传统技艺"
+            ]
+          }
+        }
+      },
+      "ProcessStep": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sequence",
+          "title",
+          "description",
+          "imageUrl",
+          "posterIconUrl",
+          "posterCaption"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000201"
+            ]
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              1
+            ]
+          },
+          "title": {
+            "type": "string",
+            "examples": [
+              "打线"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "examples": [
+              "将采收的蚕丝理顺，在木质丝车上缠绕成均匀的线轴。"
+            ]
+          },
+          "imageUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/process-1.jpg"
+            ]
+          },
+          "posterIconUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/icon-1.png"
+            ]
+          },
+          "posterCaption": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "丝线锦丝"
+            ]
+          }
+        }
+      },
+      "MediaAsset": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "url",
+          "thumbnailUrl",
+          "title",
+          "description",
+          "altText",
+          "durationSeconds",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000301"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "VIDEO"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/video-1.mp4"
+            ]
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/video-1.jpg"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "examples": [
+              "蜀锦织造技艺展示"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "织造过程记录"
+            ]
+          },
+          "altText": {
+            "type": "string",
+            "examples": [
+              "传承人演示蜀锦织造"
+            ]
+          },
+          "durationSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "examples": [
+              120
+            ]
+          },
+          "sortOrder": {
+            "type": "integer",
+            "examples": [
+              1
+            ]
+          }
+        }
+      },
+      "HeritageDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/HeritageCard"
+          },
+          {
+            "type": "object",
+            "required": [
+              "fullDescription",
+              "heroImageUrl",
+              "posterQuote",
+              "posterSummary",
+              "designations",
+              "categories",
+              "processSteps",
+              "mediaAssets",
+              "contentVersion",
+              "updatedAt"
+            ],
+            "properties": {
+              "fullDescription": {
+                "type": "string",
+                "examples": [
+                  "人工整理并写入数据库的完整介绍。"
+                ]
+              },
+              "heroImageUrl": {
+                "type": "string",
+                "format": "uri",
+                "examples": [
+                  "https://cdn.example.com/heritage/shujin/hero.jpg"
+                ]
+              },
+              "posterQuote": {
+                "type": "string",
+                "examples": [
+                  "寸锦寸金，织就千年巴蜀锦绣。"
+                ]
+              },
+              "posterSummary": {
+                "type": "string",
+                "examples": [
+                  "采用复杂的挑花结本工艺，丝线经纬交错间再现东方色彩美学。"
+                ]
+              },
+              "designations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/HeritageDesignation"
+                }
+              },
+              "categories": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/HeritageCategory"
+                }
+              },
+              "processSteps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProcessStep"
+                }
+              },
+              "mediaAssets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MediaAsset"
+                }
+              },
+              "contentVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  3
+                ]
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "examples": [
+                  "2026-07-28T12:30:00Z"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "HeritagePageData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total",
+          "totalPages"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeritageCard"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              1
+            ]
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              20
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          }
+        }
+      },
+      "HeritagePageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/HeritagePageData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "HeritageDetailResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/HeritageDetail"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "FilterOption": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "nameZh",
+          "description",
+          "displayOrder"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "examples": [
+              "NATIONAL"
+            ]
+          },
+          "nameZh": {
+            "type": "string",
+            "examples": [
+              "国家级名录"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "国家级非物质文化遗产代表性项目"
+            ]
+          },
+          "displayOrder": {
+            "type": "integer",
+            "examples": [
+              20
+            ]
+          }
+        }
+      },
+      "FilterOptionsData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "levels",
+          "categories"
+        ],
+        "properties": {
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterOption"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterOption"
+            }
+          }
+        }
+      },
+      "FilterOptionsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/FilterOptionsData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "SearchData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "regions",
+          "heritageItems"
+        ],
+        "properties": {
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegionCompact"
+            }
+          },
+          "heritageItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeritageCard"
+            }
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/SearchData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "MeData": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/UserBasic"
+          },
+          {
+            "type": "object",
+            "required": [
+              "favoriteCount",
+              "posterCount",
+              "lastLoginAt"
+            ],
+            "properties": {
+              "favoriteCount": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  2
+                ]
+              },
+              "posterCount": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  1
+                ]
+              },
+              "lastLoginAt": {
+                "type": "string",
+                "format": "date-time",
+                "examples": [
+                  "2026-07-28T12:00:00Z"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "MeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/MeData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "FavoriteStateData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "heritageId",
+          "isFavorited",
+          "favoritedAt"
+        ],
+        "properties": {
+          "heritageId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000101"
+            ]
+          },
+          "isFavorited": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "favoritedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-07-28T12:40:00Z"
+            ]
+          }
+        }
+      },
+      "FavoriteStateResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/FavoriteStateData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "PosterHeritage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "code",
+          "nameZh",
+          "coverImageUrl"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000101"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "examples": [
+              "CN-SC-SJZZ"
+            ]
+          },
+          "nameZh": {
+            "type": "string",
+            "examples": [
+              "蜀锦织造技艺"
+            ]
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/heritage/shujin/card.jpg"
+            ]
+          }
+        }
+      },
+      "PosterSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "heritageItem",
+          "status",
+          "thumbnailUrl",
+          "assetUrlExpiresAt",
+          "templateVersion",
+          "contentVersion",
+          "generatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000401"
+            ]
+          },
+          "heritageItem": {
+            "$ref": "#/components/schemas/PosterHeritage"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "READY"
+            ]
+          },
+          "thumbnailUrl": {
+            "type": "string",
+            "format": "uri",
+            "examples": [
+              "https://cdn.example.com/signed/posters/401-thumb.jpg"
+            ]
+          },
+          "assetUrlExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-07-28T12:55:00Z"
+            ]
+          },
+          "templateVersion": {
+            "type": "string",
+            "examples": [
+              "heritage-poster-v1"
+            ]
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              3
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-07-28T12:45:00Z"
+            ]
+          }
+        }
+      },
+      "PosterDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PosterSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "imageUrl"
+            ],
+            "properties": {
+              "imageUrl": {
+                "type": "string",
+                "format": "uri",
+                "examples": [
+                  "https://cdn.example.com/signed/posters/401.jpg"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "PosterPageData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total",
+          "totalPages"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterSummary"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              1
+            ]
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              20
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          }
+        }
+      },
+      "PosterPageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PosterPageData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "CreatePosterRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "heritageId"
+        ],
+        "properties": {
+          "heritageId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "019fa8f4-11d5-7000-8000-000000000101"
+            ]
+          }
+        }
+      },
+      "PosterCreateData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reused",
+          "poster"
+        ],
+        "properties": {
+          "reused": {
+            "type": "boolean",
+            "description": "true 表示内容和模板未变化，直接复用",
+            "examples": [
+              false
+            ]
+          },
+          "poster": {
+            "$ref": "#/components/schemas/PosterDetail"
+          }
+        }
+      },
+      "PosterCreateResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PosterCreateData"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      },
+      "PosterResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "OK"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": [
+              "success"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PosterDetail"
+          },
+          "requestId": {
+            "type": "string",
+            "examples": [
+              "req_01K0EXAMPLE"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "INVALID_ARGUMENT",
+                  "message": "请求参数不合法",
+                  "details": [
+                    {
+                      "field": "request",
+                      "reason": "INVALID_ARGUMENT",
+                      "message": "参数格式或取值不合法"
+                    }
+                  ],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "未登录、访问 JWT 无效或已过期",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "UNAUTHORIZED",
+                  "message": "请先登录",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在、未发布或对当前用户不可见",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "NOT_FOUND",
+                  "message": "资源不存在",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "请求频率过高",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "RATE_LIMITED",
+                  "message": "请求过于频繁，请稍后重试",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "建议等待秒数",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "服务内部异常",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "服务暂时不可用",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        }
+      },
+      "SsoUpstreamError": {
+        "description": "山东大学统一认证上游调用失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "成功示例": {
+                "summary": "成功示例",
+                "value": {
+                  "code": "SSO_UPSTREAM_ERROR",
+                  "message": "统一认证服务暂时不可用",
+                  "details": [],
+                  "requestId": "req_01K0EXAMPLE"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "本项目签发的访问 JWT"
+      },
+      "refreshCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token",
+        "description": "本项目签发的 HttpOnly 刷新 JWT"
+      }
+    },
+    "parameters": {
+      "RequestIdHeader": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "description": "客户端可提供的链路请求 ID；缺失时由服务端生成",
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "RegionCode": {
+        "name": "regionCode",
+        "in": "path",
+        "required": true,
+        "description": "稳定地区编码，例如 CN-51 或 FR",
+        "schema": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32
+        },
+        "example": "CN-51"
+      },
+      "HeritageId": {
+        "name": "heritageId",
+        "in": "path",
+        "required": true,
+        "description": "非遗 UUID",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "019fa8f4-11d5-7000-8000-000000000101"
+      },
+      "PosterId": {
+        "name": "posterId",
+        "in": "path",
+        "required": true,
+        "description": "海报 UUID",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "019fa8f4-11d5-7000-8000-000000000401"
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "页码，从 1 开始",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "description": "每页数量",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      }
+    }
+  },
+  "servers": [],
+  "security": []
+}
