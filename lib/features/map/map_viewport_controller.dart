@@ -81,14 +81,10 @@ class MapViewportController extends ChangeNotifier {
     required MapMode mode,
   }) {
     _mapBounds = allBounds;
-    final fitAllScale = _fitScale(allBounds);
-    scaleMin ??= fitAllScale * 0.5;
-    scaleMax ??= math.max(fitAllScale * 60, 8);
     if (mode == MapMode.china) {
       _fitTo(allBounds);
     } else {
-      _scale = _clampScale(fitAllScale);
-      _center = focusBounds?.center ?? allBounds.center;
+      _fitTo(focusBounds!);
     }
     notifyListeners();
   }

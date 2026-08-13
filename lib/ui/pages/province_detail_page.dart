@@ -18,6 +18,7 @@ class _ProvinceDetailPageState extends ConsumerState<ProvinceDetailPage> {
   static const _levels = ['全部', '世界级', '国家级', '省级重点'];
 
   int _selectedLevel = 0;
+  final Set<String> _favoriteTitles = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +54,16 @@ class _ProvinceDetailPageState extends ConsumerState<ProvinceDetailPage> {
             )
           else
             for (var i = 0; i < visible.length; i++) ...[
-              _HeritageCard(entry: visible[i]),
+              _HeritageCard(
+                entry: visible[i],
+                isFavorite: _favoriteTitles.contains(visible[i].title),
+                onFavoriteToggle: () => setState(() {
+                  final title = visible[i].title;
+                  _favoriteTitles.contains(title)
+                      ? _favoriteTitles.remove(title)
+                      : _favoriteTitles.add(title);
+                }),
+              ),
               if (i < visible.length - 1) const SizedBox(height: 8),
             ],
         ],
@@ -80,14 +90,14 @@ class _FilterBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (var i = 0; i < _ProvinceDetailPageState._levels.length; i++) ...[
-            if (i > 0) SizedBox(width: i == 1 ? 22 : 41),
-            _FilterChip(
-              label: _ProvinceDetailPageState._levels[i],
-              selected: selectedIndex == i,
-              onTap: () => onChanged(i),
+          for (var i = 0; i < _ProvinceDetailPageState._levels.length; i++)
+            Expanded(
+              child: _FilterChip(
+                label: _ProvinceDetailPageState._levels[i],
+                selected: selectedIndex == i,
+                onTap: () => onChanged(i),
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -107,37 +117,28 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (selected) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 95,
-          height: 32,
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: AppColors.accent,
-            ),
-          ),
-        ),
-      );
-    }
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 14, color: AppColors.textHint),
+      child: SizedBox(
+        // 两种状态均占用相同的点击与布局空间，切换筛选时列表不会横向跳动。
+        width: double.infinity,
+        height: 32,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: selected ? AppColors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: selected ? 16 : 14,
+                fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+                color: selected ? AppColors.accent : AppColors.textHint,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -145,9 +146,15 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _HeritageCard extends StatelessWidget {
-  const _HeritageCard({required this.entry});
+  const _HeritageCard({
+    required this.entry,
+    required this.isFavorite,
+    required this.onFavoriteToggle,
+  });
 
   final HeritageEntry entry;
+  final bool isFavorite;
+  final VoidCallback onFavoriteToggle;
 
   Color get _levelColor => switch (entry.level) {
     '国家级' => const Color(0x96D27650),
@@ -159,7 +166,9 @@ class _HeritageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 11),
-      height: 120,
+      // 预留 8px 的垂直呼吸空间：缩略图保持 100px，文字与收藏按钮不会
+      // 因字体度量/设备像素取整而溢出卡片底部。
+      height: 128,
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -241,10 +250,23 @@ class _HeritageCard extends StatelessWidget {
                             ),
                           ),
                           const Spacer(),
-                          const Icon(
-                            Icons.chevron_right,
-                            size: 20,
-                            color: AppColors.textLight,
+                          IconButton(
+                            tooltip: isFavorite ? '取消收藏' : '收藏',
+                            onPressed: onFavoriteToggle,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            icon: Icon(
+                              isFavorite
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              size: 20,
+                              color: isFavorite
+                                  ? AppColors.accent
+                                  : AppColors.textLight,
+                            ),
                           ),
                         ],
                       ),

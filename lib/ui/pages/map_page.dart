@@ -259,11 +259,14 @@ class _RegionSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 24,
-                      color: AppColors.accent,
-                    ),
+                    // TODO 实现收藏点击
+                    IconButton(
+                      icon: Icon(
+                        Icons.favorite_border_outlined,
+                        color: Colors.redAccent[100],
+                      ),
+                      onPressed: null, 
+                    )
                   ],
                 ),
                 const SizedBox(height: 14),
