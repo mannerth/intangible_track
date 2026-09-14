@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../api/providers.dart';
 import '../ui/pages/discover_page.dart';
 import '../ui/pages/favorites_page.dart';
 import '../ui/pages/heritage_detail_page.dart';
@@ -13,8 +14,26 @@ import '../ui/pages/province_detail_page.dart';
 import '../ui/shell/main_shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final session = ref.watch(sessionProvider);
   return GoRouter(
     initialLocation: '/map',
+    redirect: (context, state) {
+      final path = state.uri.path;
+      final protected = path == '/profile' || path.startsWith('/profile/');
+      if (!session.hasValue || !session.value!.ready) return null;
+      if (protected && !session.value!.signedIn) {
+        // 保留被拦截的完整地址，登录成功后回到用户原本要访问的页面。
+        return Uri(path: '/login', queryParameters: {
+          'returnTo': state.uri.toString(),
+        }).toString();
+      }
+      if (path == '/login' && session.value!.signedIn) {
+        final returnTo = state.uri.queryParameters['returnTo'];
+        if (returnTo != null && returnTo.startsWith('/')) return returnTo;
+        return '/profile';
+      }
+      return null;
+    },
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -72,7 +91,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         name: 'login',
-        builder: (context, state) => const LoginPage(),
+        builder: (context, state) => LoginPage(
+          returnTo: state.uri.queryParameters['returnTo'],
+        ),
       ),
       // 详情类页面置于 shell 之外，进入后不显示底部导航栏。
       GoRoute(

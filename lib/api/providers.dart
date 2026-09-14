@@ -42,23 +42,25 @@ class SessionController extends AsyncNotifier<SessionState> {
   }
 
   Future<void> completeDeepLink(Uri uri) async {
-    final ticket = uri.queryParameters['ticket'];
-    if (uri.scheme != 'intangibletrack' ||
-        uri.host != 'auth_callback' ||
-        ticket == null ||
-        ticket.isEmpty) {
-      throw const ApiException('登录回调缺少 ticket');
+    final tokens = ref.read(authRepositoryProvider).tokensFromCallback(uri);
+    if (tokens == null) {
+      throw const ApiException('登录回调缺少 accessToken 或 refreshToken');
     }
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final login = await ref.read(authRepositoryProvider).exchange(ticket);
-      await Http.instance.setAccessToken(login.accessToken);
-      return SessionState(user: login.user, ready: true);
+      await Http.instance.setSession(
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      );
+      return SessionState(
+        user: (await ref.read(userRepositoryProvider).me()).user,
+        ready: true,
+      );
     });
   }
 
   Future<void> logout() async {
-    await ref.read(authRepositoryProvider).logout(Http.baseUrl);
+    await Http.instance.clearSession();
     state = const AsyncData(SessionState(ready: true));
   }
 }

@@ -19,13 +19,8 @@ class HeritageApi {
     return fromJson(Map<String, Object?>.from(body['data'] as Map));
   }
 
-  Uri ssoAuthorizeUri({String returnPath = '/profile'}) => Uri.parse(
-    '${Http.baseUrl}/auth/sso/authorize',
-  ).replace(queryParameters: {'returnPath': returnPath});
-  Future<LoginData> exchangeLoginTicket(String ticket) => _decode(
-    _http.post('/auth/sso/exchange', data: {'loginTicket': ticket}),
-    LoginData.fromJson,
-  );
+  Uri mobileSsoAuthorizeUri() =>
+      Uri.parse('${Http.baseUrl}/auth/sso/mobile/authorize');
   Future<RefreshData> refresh(String origin) => _decode(
     _http.post('/auth/refresh', headers: {'Origin': origin}),
     RefreshData.fromJson,
@@ -34,6 +29,7 @@ class HeritageApi {
     await _http.post('/auth/logout', headers: {'Origin': origin});
     await _http.clearSession();
   }
+
 
   Future<RegionList> listRegions({
     required ApiMapMode mapMode,

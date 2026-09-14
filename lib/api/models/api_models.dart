@@ -48,15 +48,18 @@ class LoginData {
     required this.tokenType,
     required this.expiresIn,
     required this.user,
+    this.refreshToken,
   });
   final String accessToken, tokenType;
   final int expiresIn;
   final User user;
+  final String? refreshToken;
   factory LoginData.fromJson(Json j) => LoginData(
     accessToken: _string(j, 'accessToken'),
     tokenType: _string(j, 'tokenType'),
     expiresIn: _int(j, 'expiresIn'),
     user: User.fromJson(_object(j['user'])),
+    refreshToken: j['refreshToken']?.toString(),
   );
 }
 
@@ -65,13 +68,16 @@ class RefreshData {
     required this.accessToken,
     required this.tokenType,
     required this.expiresIn,
+    this.refreshToken,
   });
   final String accessToken, tokenType;
   final int expiresIn;
+  final String? refreshToken;
   factory RefreshData.fromJson(Json j) => RefreshData(
     accessToken: _string(j, 'accessToken'),
     tokenType: _string(j, 'tokenType'),
     expiresIn: _int(j, 'expiresIn'),
+    refreshToken: j['refreshToken']?.toString(),
   );
 }
 

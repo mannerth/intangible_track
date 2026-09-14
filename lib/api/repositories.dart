@@ -4,19 +4,18 @@ import 'models/api_models.dart';
 class AuthRepository {
   AuthRepository(this._api);
   final HeritageApi _api;
-  Uri authorizeUri({String returnPath = '/profile'}) =>
-      _api.ssoAuthorizeUri(returnPath: returnPath);
-  Future<LoginData> exchange(String ticket) => _api.exchangeLoginTicket(ticket);
+  Uri authorizeUri() => _api.mobileSsoAuthorizeUri();
   Future<RefreshData> refresh(String origin) => _api.refresh(origin);
-  Future<void> logout(String origin) => _api.logout(origin);
 
   /// SSO 回调本身由认证服务处理；客户端只负责校验并消费这个 deep link。
-  String? ticketFromCallback(Uri uri) {
+  ({String accessToken, String refreshToken})? tokensFromCallback(Uri uri) {
     if (uri.scheme != 'intangibletrack' || uri.host != 'auth_callback') {
       return null;
     }
-    final ticket = uri.queryParameters['ticket'];
-    return ticket == null || ticket.isEmpty ? null : ticket;
+    final accessToken = uri.queryParameters['accessToken'];
+    final refreshToken = uri.queryParameters['refreshToken'];
+    if (accessToken == null || accessToken.isEmpty || refreshToken == null || refreshToken.isEmpty) return null;
+    return (accessToken: accessToken, refreshToken: refreshToken);
   }
 }
 

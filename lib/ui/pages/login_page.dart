@@ -7,7 +7,8 @@ import '../../api/providers.dart';
 import '../../common/app_theme.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.returnTo});
+  final String? returnTo;
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
@@ -26,7 +27,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           .read(sessionProvider.notifier)
           .completeDeepLink(Uri.parse(callback));
       if (mounted) {
-        context.goNamed('profile');
+        final destination = widget.returnTo;
+        if (destination != null && destination.startsWith('/')) {
+          context.go(destination);
+        } else {
+          context.goNamed('profile');
+        }
       }
     } catch (error) {
       if (mounted) {

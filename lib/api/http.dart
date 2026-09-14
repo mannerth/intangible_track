@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 应用 HTTP 客户端。默认连接 Apifox Mock；发布或局域网联调时以
+/// 应用 HTTP 客户端。默认通过 adb reverse 连接电脑上的本地后端；发布或
+/// 真机/iOS 联调时以
 /// `--dart-define=API_BASE_URL=https://host/api/v1` 覆盖。
 class Http {
   Http._() {
@@ -22,23 +23,48 @@ class Http {
           }
           handler.next(options);
         },
+        onError: (error, handler) async {
+          if (error.response?.statusCode != 401 ||
+              error.requestOptions.path.endsWith('/auth/refresh') ||
+              _refreshToken == null ||
+              _refreshToken!.isEmpty ||
+              error.requestOptions.extra['authRetry'] == true) {
+            handler.next(error);
+            return;
+          }
+          try {
+            await refreshAccessToken();
+            final request = error.requestOptions;
+            request.extra['authRetry'] = true;
+            request.headers['Authorization'] = 'Bearer $_accessToken';
+            handler.resolve(await _dio.fetch(request));
+          } catch (_) {
+            await clearSession();
+            handler.next(error);
+          }
+        },
       ),
     );
   }
 
   static const baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:4523/m1/8643781-8424770-default',
+    defaultValue: 'http://localhost:9100/api/v1',
   );
   static final Http instance = Http._();
 
   late final Dio _dio;
   String? _accessToken;
+  String? _refreshToken;
+  Future<void>? _refreshFuture;
   String? get accessToken => _accessToken;
+  String? get refreshToken => _refreshToken;
   bool get isAuthenticated => _accessToken?.isNotEmpty ?? false;
 
   Future<void> restoreSession() async {
-    _accessToken = (await SharedPreferences.getInstance()).getString(_tokenKey);
+    final prefs = await SharedPreferences.getInstance();
+    _accessToken = prefs.getString(_tokenKey);
+    _refreshToken = prefs.getString(_refreshTokenKey);
   }
 
   Future<void> setAccessToken(String token) async {
@@ -46,9 +72,48 @@ class Http {
     await (await SharedPreferences.getInstance()).setString(_tokenKey, token);
   }
 
+  Future<void> setSession({
+    required String accessToken,
+    String? refreshToken,
+  }) async {
+    _accessToken = accessToken;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      _refreshToken = refreshToken;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, accessToken);
+    if (_refreshToken != null) {
+      await prefs.setString(_refreshTokenKey, _refreshToken!);
+    }
+  }
+
+  Future<void> refreshAccessToken() {
+    return _refreshFuture ??= _performRefresh().whenComplete(
+      () => _refreshFuture = null,
+    );
+  }
+
+  Future<void> _performRefresh() async {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      throw StateError('登录会话已失效');
+    }
+    final response = await _dio.post('/auth/refresh',
+        options: Options(headers: {'Authorization': 'Bearer $refreshToken'}));
+    final body = response.data;
+    final data = Map<String, Object?>.from(body['data'] as Map);
+    await setSession(
+      accessToken: data['accessToken'].toString(),
+      refreshToken: data['refreshToken']?.toString(),
+    );
+  }
+
   Future<void> clearSession() async {
     _accessToken = null;
-    await (await SharedPreferences.getInstance()).remove(_tokenKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_refreshTokenKey);
+    _refreshToken = null;
   }
 
   Future<Response<dynamic>> get(String path, {Map<String, dynamic>? query}) =>
@@ -69,6 +134,7 @@ class Http {
   Future<Response<dynamic>> delete(String path) => _dio.delete(path);
 
   static const _tokenKey = 'api_access_token';
+  static const _refreshTokenKey = 'api_refresh_token';
   static Map<String, dynamic>? _withoutNulls(Map<String, dynamic>? map) {
     if (map == null) return null;
     return {...map}..removeWhere((_, value) => value == null || value == '');

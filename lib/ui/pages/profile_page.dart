@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../api/providers.dart';
 import '../../common/app_theme.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   static const _menuItems = [
@@ -16,7 +18,9 @@ class ProfilePage extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final user = session.value?.user;
     return Scaffold(
       body: ListView(
         padding: EdgeInsets.zero,
@@ -55,11 +59,11 @@ class ProfilePage extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Positioned(
+                Positioned(
                   left: 117,
                   top: 97,
                   child: Text(
-                    '天凉被破王',
+                    user?.name ?? '非遗访客',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w500,
@@ -67,11 +71,11 @@ class ProfilePage extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Positioned(
+                Positioned(
                   left: 117,
                   top: 125,
                   child: Text(
-                    '这个人很神秘，什么都没有留下',
+                    user == null ? '登录后管理你的收藏与海报' : '山东大学统一认证用户',
                     style: TextStyle(fontSize: 14, color: AppColors.accent),
                   ),
                 ),
@@ -118,13 +122,31 @@ class ProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           for (var i = 0; i < _menuItems.length; i++) ...[
-            _MenuRow(item: _menuItems[i]),
+            _MenuRow(
+              item: _menuItems[i],
+              onTap: _menuItems[i].$1 == '退出登录'
+                  ? () => _logout(context, ref)
+                  : null,
+            ),
             if (i < _menuItems.length - 1) const SizedBox(height: 12),
           ],
           const SizedBox(height: 32),
         ],
       ),
     );
+  }
+
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(sessionProvider.notifier).logout();
+      if (context.mounted) context.goNamed('login');
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('退出登录失败：$error')));
+      }
+    }
   }
 }
 
@@ -190,32 +212,41 @@ class _EntryTile extends StatelessWidget {
 }
 
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.item});
+  const _MenuRow({required this.item, this.onTap});
 
   final (String, IconData) item;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final (label, icon) = item;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 13),
-      height: 60,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.textSecondary),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 16, color: AppColors.textHint),
-          ),
-          const Spacer(),
-          const Icon(Icons.chevron_right, size: 18, color: AppColors.textLight),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        height: 60,
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: AppColors.textSecondary),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 16, color: AppColors.textHint),
+            ),
+            const Spacer(),
+            const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: AppColors.textLight,
+            ),
+          ],
+        ),
       ),
     );
   }
