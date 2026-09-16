@@ -30,7 +30,6 @@ class HeritageApi {
     await _http.clearSession();
   }
 
-
   Future<RegionList> listRegions({
     required ApiMapMode mapMode,
     String? query,
@@ -67,8 +66,9 @@ class HeritageApi {
       query: {
         'q': query,
         'regionCode': regionCode,
-        'levels': levels?.map((e) => e.value).join(','),
-        'categoryCodes': categoryCodes?.join(','),
+        // 契约要求重复查询参数：levels=WORLD&levels=NATIONAL
+        'levels': levels?.map((e) => e.value).toList(),
+        'categoryCodes': categoryCodes,
         'sort': sort,
         'page': page,
         'pageSize': pageSize,
@@ -97,8 +97,8 @@ class HeritageApi {
       '/me/posters',
       data: {'heritageId': heritageId},
       headers: {
-        'Idempotency-Key':
-            'flutter-${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 31)}',
+        // 契约要求客户端为一次用户操作生成 UUID
+        'Idempotency-Key': _uuidV4(),
       },
     ),
     CreatedPoster.fromJson,
@@ -112,4 +112,14 @@ class ApiException implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+/// 生成 UUID v4，用于海报生成的 Idempotency-Key。
+String _uuidV4() {
+  final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }

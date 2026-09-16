@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../api/models/api_models.dart' as api;
 import '../../ui/providers.dart';
 import '../../api/providers.dart';
 import 'map_geometry_loader.dart';
@@ -28,14 +29,13 @@ final mapGeometryProvider =
       (ref, mode) => MapGeometryLoader.load(mode),
     );
 
-/// 地区列表（Mock 实现接口合同；q 为空时返回全量）
-final mapRegionsDataProvider = FutureProvider.family<RegionListData, MapMode>((
-  ref,
-  mode,
-) {
-  final q = ref.watch(searchQueryProvider);
-  return ref.watch(mapRegionRepositoryProvider).fetchRegions(mode, q: q);
-});
+/// 地区列表：GET /regions?mapMode=&q=（q 为空时返回全量）
+final mapRegionsDataProvider = FutureProvider.family<List<api.Region>, MapMode>(
+  (ref, mode) {
+    final q = ref.watch(searchQueryProvider);
+    return ref.watch(mapRegionRepositoryProvider).fetchRegions(mode, q: q);
+  },
+);
 
 /// 合并几何与地区概要，供地图组件使用
 final mapRegionsProvider = FutureProvider.family<List<MapRegion>, MapMode>((
@@ -44,11 +44,12 @@ final mapRegionsProvider = FutureProvider.family<List<MapRegion>, MapMode>((
 ) async {
   final geometry = await ref.watch(mapGeometryProvider(mode).future);
   final data = await ref.watch(mapRegionsDataProvider(mode).future);
-  final byKey = {for (final r in data.regions) ?r.mapKey: r};
+  // 地区编码（中国=行政区划码、世界=ISO 三位码）即前端几何键。
+  final byKey = {for (final r in data) r.code: r};
   return [
     for (final entry in geometry.entries)
       MapRegion(
-        mapKey: entry.key,
+        regionCode: entry.key,
         nameZh: byKey[entry.key]?.nameZh ?? entry.value.nameZh,
         nameEn: byKey[entry.key]?.nameEn ?? entry.value.name,
         geometry: entry.value.geometry,

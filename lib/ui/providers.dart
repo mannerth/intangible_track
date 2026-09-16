@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/models/api_models.dart';
 import '../api/providers.dart';
-import '../api/models/api_models.dart' as api;
+import '../features/map/models.dart' as map_models;
+import '../features/map/providers.dart' as map_providers;
 
-import 'models.dart';
-
-/// 首页搜索框内容
+/// 顶部搜索框内容
 class SearchQuery extends Notifier<String> {
   @override
   String build() => '';
@@ -17,76 +17,52 @@ final searchQueryProvider = NotifierProvider<SearchQuery, String>(
   SearchQuery.new,
 );
 
-/// 当前选中的省份（进入省份详情时设置）
-class CurrentProvince extends Notifier<Province> {
-  @override
-  Province build() => kProvinces.first;
-
-  void select(Province province) => state = province;
-}
-
-final currentProvinceProvider = NotifierProvider<CurrentProvince, Province>(
-  CurrentProvince.new,
-);
-
-/// 每日推荐卡片
-final dailyTopicsProvider = Provider<List<HeritageTopic>>(
-  (ref) => kDailyTopics,
-);
-
-/// 热门话题卡片
-final hotTopicsProvider = Provider<List<HeritageTopic>>((ref) => kHotTopics);
-
-/// 省份非遗名录条目
-final provinceEntriesProvider = Provider.family<List<HeritageEntry>, String>((
-  ref,
-  provinceName,
-) {
-  switch (provinceName) {
-    case '湖北省':
-      return kHubeiEntries;
-    case '吉林省':
-      return kJilinEntries;
-    default:
-      return const [];
-  }
+/// 名录列表查询条件
+typedef HeritageListQuery = ({
+  String? regionCode,
+  HeritageLevel? level,
+  String? query,
 });
 
-/// 真实名录接口。省份页面和搜索结果使用该 provider，而旧 mock 仅保留作
-/// 服务不可用时的开发占位。
-final remoteHeritageEntriesProvider =
-    FutureProvider.family<
-      List<HeritageEntry>,
-      ({String? regionCode, String? level, String? query})
-    >((ref, query) async {
-      final data = await ref
+/// GET /regions/{regionCode}
+final regionDetailProvider = FutureProvider.family<RegionDetail, String>(
+  (ref, regionCode) => ref.watch(regionRepositoryProvider).detail(regionCode),
+);
+
+/// GET /heritage-items（地区 / 级别 / 关键词）
+final heritageListProvider =
+    FutureProvider.family<PageData<HeritageCard>, HeritageListQuery>((
+      ref,
+      query,
+    ) {
+      return ref
           .watch(heritageRepositoryProvider)
           .list(
             regionCode: query.regionCode,
             query: query.query,
-            levels: query.level == null
-                ? null
-                : [api.HeritageLevel.from(query.level!)],
+            levels: query.level == null ? null : [query.level!],
+            pageSize: 50,
           );
-      return data.items.map((item) {
-        final level = item.badges
-            .firstWhere(
-              (badge) => badge.type == 'LEVEL',
-              orElse: () => const api.Badge(type: '', code: '', name: '国家级'),
-            )
-            .name;
-        final category = item.badges
-            .firstWhere(
-              (badge) => badge.type == 'CATEGORY',
-              orElse: () => const api.Badge(type: '', code: '', name: '传统技艺'),
-            )
-            .name;
-        return HeritageEntry(
-          id: item.id,
-          title: item.nameZh,
-          category: category,
-          level: level,
-          description: item.summary,
-        );
-      }).toList();
     });
+
+/// 发现页「每日推送」：按最近认定年份排序
+final discoverDailyProvider = FutureProvider<PageData<HeritageCard>>(
+  (ref) => ref
+      .watch(heritageRepositoryProvider)
+      .list(sort: 'NEWEST_DESIGNATION', pageSize: 6),
+);
+
+/// 发现页「热门话题」：按人工排序取前 9 条
+final discoverHotProvider = FutureProvider<PageData<HeritageCard>>(
+  (ref) => ref.watch(heritageRepositoryProvider).list(pageSize: 9),
+);
+
+/// 地图页「常看省份」：中国模式下按名录数量排序的省份
+final rankedProvincesProvider = FutureProvider<List<Region>>((ref) async {
+  final data = await ref.watch(
+    map_providers.mapRegionsDataProvider(map_models.MapMode.china).future,
+  );
+  final sorted = [...data]
+    ..sort((a, b) => (b.totalCount ?? 0).compareTo(a.totalCount ?? 0));
+  return sorted.take(4).toList();
+});

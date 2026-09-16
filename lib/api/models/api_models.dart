@@ -1,3 +1,5 @@
+import '../http.dart';
+
 typedef Json = Map<String, Object?>;
 
 String _string(Json json, String key) => json[key]?.toString() ?? '';
@@ -6,6 +8,12 @@ bool _bool(Json json, String key) => json[key] as bool? ?? false;
 Json _object(Object? value) => Map<String, Object?>.from(value! as Map);
 List<Json> _objects(Object? value) =>
     (value as List? ?? const []).map((e) => _object(e)).toList();
+
+/// 可空资源地址：为空时保持 null，否则补全成绝对地址
+String? _optionalUrl(Object? value) {
+  final text = value?.toString();
+  return text == null ? null : Http.resolveAssetUrl(text);
+}
 
 class ApiResponse<T> {
   const ApiResponse({
@@ -121,12 +129,11 @@ class Region {
     required this.nameZh,
     required this.nameEn,
     this.description,
-    this.mapKey,
     this.totalCount,
     this.levelCounts,
   });
   final String code, type, nameZh;
-  final String? nameEn, description, mapKey;
+  final String? nameEn, description;
   final int? totalCount;
   final LevelCounts? levelCounts;
   factory Region.fromJson(Json j) => Region(
@@ -135,7 +142,6 @@ class Region {
     nameZh: _string(j, 'nameZh'),
     nameEn: j['nameEn']?.toString(),
     description: j['description']?.toString(),
-    mapKey: j['mapKey']?.toString(),
     totalCount: (j['totalCount'] as num?)?.toInt(),
     levelCounts: j['levelCounts'] == null
         ? null
@@ -223,7 +229,7 @@ class HeritageCard {
     nameEn: j['nameEn']?.toString(),
     location: Location.fromJson(_object(j['location'])),
     summary: _string(j, 'summary'),
-    coverImageUrl: _string(j, 'coverImageUrl'),
+    coverImageUrl: Http.resolveAssetUrl(_string(j, 'coverImageUrl')),
     badges: _objects(j['badges']).map(Badge.fromJson).toList(),
     isFavorited: j['isFavorited'] as bool?,
   );
@@ -272,8 +278,8 @@ class ProcessStep {
     sequence: _int(j, 'sequence'),
     title: _string(j, 'title'),
     description: _string(j, 'description'),
-    imageUrl: j['imageUrl']?.toString(),
-    posterIconUrl: j['posterIconUrl']?.toString(),
+    imageUrl: _optionalUrl(j['imageUrl']),
+    posterIconUrl: _optionalUrl(j['posterIconUrl']),
     posterCaption: j['posterCaption']?.toString(),
   );
 }
@@ -297,8 +303,8 @@ class MediaAsset {
   factory MediaAsset.fromJson(Json j) => MediaAsset(
     id: _string(j, 'id'),
     type: _string(j, 'type'),
-    url: _string(j, 'url'),
-    thumbnailUrl: j['thumbnailUrl']?.toString(),
+    url: Http.resolveAssetUrl(_string(j, 'url')),
+    thumbnailUrl: _optionalUrl(j['thumbnailUrl']),
     title: _string(j, 'title'),
     description: j['description']?.toString(),
     altText: _string(j, 'altText'),
@@ -335,7 +341,7 @@ class HeritageDetail {
   factory HeritageDetail.fromJson(Json j) => HeritageDetail(
     card: HeritageCard.fromJson(j),
     fullDescription: _string(j, 'fullDescription'),
-    heroImageUrl: _string(j, 'heroImageUrl'),
+    heroImageUrl: Http.resolveAssetUrl(_string(j, 'heroImageUrl')),
     posterQuote: _string(j, 'posterQuote'),
     posterSummary: _string(j, 'posterSummary'),
     designations: _objects(
@@ -456,7 +462,7 @@ class PosterHeritage {
     id: _string(j, 'id'),
     code: _string(j, 'code'),
     nameZh: _string(j, 'nameZh'),
-    coverImageUrl: _string(j, 'coverImageUrl'),
+    coverImageUrl: Http.resolveAssetUrl(_string(j, 'coverImageUrl')),
   );
 }
 
@@ -485,12 +491,12 @@ class Poster {
     id: _string(j, 'id'),
     heritageItem: PosterHeritage.fromJson(_object(j['heritageItem'])),
     status: _string(j, 'status'),
-    thumbnailUrl: _string(j, 'thumbnailUrl'),
+    thumbnailUrl: Http.resolveAssetUrl(_string(j, 'thumbnailUrl')),
     assetUrlExpiresAt: _string(j, 'assetUrlExpiresAt'),
     templateVersion: _string(j, 'templateVersion'),
     contentVersion: _int(j, 'contentVersion'),
     generatedAt: _string(j, 'generatedAt'),
-    imageUrl: j['imageUrl']?.toString(),
+    imageUrl: _optionalUrl(j['imageUrl']),
   );
 }
 

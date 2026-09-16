@@ -125,7 +125,7 @@ class MapPainter extends CustomPainter {
     canvas.scale(scale);
     canvas.translate(-center.dx, -center.dy);
     for (final info in paintInfos) {
-      if (info.region.mapKey == selectedKey) {
+      if (info.region.regionCode == selectedKey) {
         canvas.drawPath(info.path, selectedFill);
         canvas.drawPath(info.path, selectedLine);
       } else {
@@ -147,7 +147,7 @@ class MapPainter extends CustomPainter {
         (info.anchor.dx - center.dx) * scale + c.dx,
         (info.anchor.dy - center.dy) * scale + c.dy,
       );
-      final isSelected = info.region.mapKey == selectedKey;
+      final isSelected = info.region.regionCode == selectedKey;
       final fontSize = adaptiveFontSizeFor(
         info.region.nameZh,
         screenWidth,

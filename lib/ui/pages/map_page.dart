@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../api/models/api_models.dart';
 import '../../common/app_theme.dart';
 import '../../features/map/interactive_map.dart';
 import '../../features/map/models.dart';
 import '../../features/map/providers.dart' as map;
-import '../models.dart';
 import '../providers.dart';
 import '../widgets/search_header.dart';
 
@@ -29,10 +29,10 @@ class _MapPageState extends ConsumerState<MapPage> {
         region: region,
         onOpenList: () {
           Navigator.of(context).pop();
-          ref
-              .read(currentProvinceProvider.notifier)
-              .select(Province(name: region.nameZh, items: const []));
-          context.pushNamed('provinceDetail');
+          context.pushNamed(
+            'provinceDetail',
+            pathParameters: {'regionCode': region.regionCode},
+          );
         },
       ),
     );
@@ -43,6 +43,7 @@ class _MapPageState extends ConsumerState<MapPage> {
     final mapMode = ref.watch(map.mapModeProvider);
     final regionsAsync = ref.watch(map.mapRegionsProvider(mapMode));
     final selected = ref.watch(map.selectedRegionProvider);
+    final provinces = ref.watch(rankedProvincesProvider);
 
     return Scaffold(
       appBar: SearchHeader.searchOnly(
@@ -91,7 +92,7 @@ class _MapPageState extends ConsumerState<MapPage> {
               child: _MapArea(
                 mode: mapMode,
                 regionsAsync: regionsAsync,
-                selectedKey: selected?.mapKey,
+                selectedKey: selected?.regionCode,
                 onRegionTap: _onRegionTap,
               ),
             ),
@@ -127,28 +128,61 @@ class _MapPageState extends ConsumerState<MapPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                for (var row = 0; row < 2; row++) ...[
-                  Row(
-                    children: [
-                      for (var i = 0; i < kProvinces.length; i++) ...[
-                        Expanded(
-                          child: _ProvinceCard(
-                            province: kProvinces[i],
-                            highlighted: row == 0,
-                            onTap: () {
-                              ref
-                                  .read(currentProvinceProvider.notifier)
-                                  .select(kProvinces[i]);
-                              context.pushNamed('provinceDetail');
-                            },
-                          ),
+                provinces.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.accent,
                         ),
-                        if (i == 0) const SizedBox(width: 12),
+                      ),
+                    ),
+                  ),
+                  error: (error, stack) => const Text(
+                    '省份列表加载失败',
+                    style: TextStyle(fontSize: 12, color: AppColors.textHint),
+                  ),
+                  data: (items) => Column(
+                    children: [
+                      for (
+                        var row = 0;
+                        row < (items.length / 2).ceil();
+                        row++
+                      ) ...[
+                        Row(
+                          children: [
+                            for (var i = 0; i < 2; i++) ...[
+                              if (row * 2 + i < items.length)
+                                Expanded(
+                                  child: _ProvinceCard(
+                                    province: items[row * 2 + i],
+                                    highlighted: row == 0,
+                                    onTap: () {
+                                      final region = items[row * 2 + i];
+                                      context.pushNamed(
+                                        'provinceDetail',
+                                        pathParameters: {
+                                          'regionCode': region.code,
+                                        },
+                                      );
+                                    },
+                                  ),
+                                )
+                              else
+                                const Spacer(),
+                              if (i == 0) const SizedBox(width: 12),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 12),
-                ],
+                ),
                 const SizedBox(height: 8),
               ],
             ),
@@ -259,13 +293,10 @@ class _RegionSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // TODO 实现收藏点击
-                    IconButton(
-                      icon: Icon(
-                        Icons.favorite_border_outlined,
-                        color: Colors.redAccent[100],
-                      ),
-                      onPressed: null,
+                    const Icon(
+                      Icons.place_outlined,
+                      size: 24,
+                      color: AppColors.accent,
                     ),
                   ],
                 ),
@@ -455,7 +486,7 @@ class _ProvinceCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final Province province;
+  final Region province;
   final bool highlighted;
   final VoidCallback onTap;
 
@@ -480,7 +511,9 @@ class _ProvinceCard extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  province.name.substring(0, 1),
+                  province.nameZh.isEmpty
+                      ? '非'
+                      : province.nameZh.substring(0, 1),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -494,7 +527,7 @@ class _ProvinceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      province.name,
+                      province.nameZh,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -503,7 +536,7 @@ class _ProvinceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      province.items.join(' · '),
+                      '${province.totalCount ?? 0} 项名录',
                       style: const TextStyle(
                         fontSize: 9,
                         color: AppColors.textHint,

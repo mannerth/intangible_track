@@ -1,3 +1,5 @@
+import '../../api/models/api_models.dart' as api;
+
 /// 地图模式，与后端 MapMode 枚举一致
 enum MapMode {
   china('CHINA'),
@@ -9,69 +11,6 @@ enum MapMode {
 
   static MapMode fromApi(String value) =>
       MapMode.values.firstWhere((m) => m.apiValue == value);
-}
-
-/// 地区类型
-enum RegionType {
-  country('COUNTRY'),
-  province('PROVINCE'),
-  city('CITY'),
-  district('DISTRICT');
-
-  const RegionType(this.apiValue);
-
-  final String apiValue;
-}
-
-/// 非遗等级计数
-class LevelCounts {
-  const LevelCounts({
-    required this.world,
-    required this.national,
-    required this.provincial,
-  });
-
-  final int world;
-  final int national;
-  final int provincial;
-
-  int get total => world + national + provincial;
-}
-
-/// 地区概要（后端 RegionSummary）
-class RegionSummary {
-  const RegionSummary({
-    required this.code,
-    required this.type,
-    required this.nameZh,
-    required this.nameEn,
-    required this.description,
-    required this.mapKey,
-    required this.totalCount,
-    required this.levelCounts,
-  });
-
-  final String code;
-  final RegionType type;
-  final String nameZh;
-  final String? nameEn;
-  final String description;
-  final String? mapKey;
-  final int totalCount;
-  final LevelCounts levelCounts;
-}
-
-/// 地图地区列表（后端 RegionListData）
-class RegionListData {
-  const RegionListData({
-    required this.mapMode,
-    required this.regions,
-    required this.requestId,
-  });
-
-  final MapMode mapMode;
-  final List<RegionSummary> regions;
-  final String requestId;
 }
 
 /// 地理坐标（经纬度）
@@ -110,10 +49,10 @@ class RegionGeometry {
   }
 }
 
-/// 前端地图使用的完整地区（几何 + 概要元数据）
+/// 前端地图使用的完整地区（本地几何 + 接口地区数据）
 class MapRegion {
   const MapRegion({
-    required this.mapKey,
+    required this.regionCode,
     required this.nameZh,
     required this.geometry,
     this.nameEn,
@@ -121,12 +60,15 @@ class MapRegion {
     this.summary,
   });
 
-  final String mapKey;
+  /// 地区编码，同时作为前端几何数据的键（中国=行政区划码，世界=ISO 三位码）
+  final String regionCode;
   final String nameZh;
   final String? nameEn;
   final RegionGeometry geometry;
 
   /// 标注锚点（经纬度）；为空时回退到质心
   final GeoPoint? labelAnchor;
-  final RegionSummary? summary;
+
+  /// 接口返回的地区数据；几何存在但接口未收录时为 null
+  final api.Region? summary;
 }

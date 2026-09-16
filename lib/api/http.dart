@@ -9,8 +9,8 @@ class Http {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 3),
         headers: const {'Accept': 'application/json'},
       ),
     );
@@ -51,6 +51,23 @@ class Http {
     'API_BASE_URL',
     defaultValue: 'http://localhost:9100/api/v1',
   );
+
+  /// 接口返回的资源地址可能是相对 API 根路径的相对地址（以 `/` 开头，
+  /// 例如海报签名地址），这里统一补全为可直接访问的绝对地址。
+  static String resolveAssetUrl(String value) {
+    if (value.isEmpty) return value;
+    final parsed = Uri.tryParse(value);
+    if (parsed == null || parsed.hasScheme) return value;
+    final base = Uri.parse(baseUrl);
+    return Uri(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+      path: parsed.path,
+      query: parsed.hasQuery ? parsed.query : null,
+    ).toString();
+  }
+
   static final Http instance = Http._();
 
   late final Dio _dio;
@@ -98,8 +115,10 @@ class Http {
     if (refreshToken == null || refreshToken.isEmpty) {
       throw StateError('登录会话已失效');
     }
-    final response = await _dio.post('/auth/refresh',
-        options: Options(headers: {'Authorization': 'Bearer $refreshToken'}));
+    final response = await _dio.post(
+      '/auth/refresh',
+      options: Options(headers: {'Authorization': 'Bearer $refreshToken'}),
+    );
     final body = response.data;
     final data = Map<String, Object?>.from(body['data'] as Map);
     await setSession(

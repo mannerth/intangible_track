@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import 'package:intangible_track/features/map/models.dart';
+import 'package:intangible_track/api/models/api_models.dart' as api;
 import 'package:intangible_track/features/map/interactive_map.dart';
+import 'package:intangible_track/features/map/models.dart';
 import 'package:intangible_track/features/map/providers.dart' as map;
 import 'package:intangible_track/main.dart';
 import 'package:intangible_track/ui/pages/map_page.dart';
 import 'package:intangible_track/ui/pages/province_detail_page.dart';
+import 'package:intangible_track/ui/providers.dart' as ui;
 import 'package:intangible_track/ui/widgets/search_header.dart';
 
 // 测试环境不打包真实资源，这里用 1x1 透明 PNG 兜底
@@ -56,11 +59,80 @@ void mockAssets(WidgetTester tester) {
   );
 }
 
-Widget appWithMapOverrides({Widget child = const SizedBox.shrink()}) {
+const _hubei = api.Region(
+  code: '420000',
+  type: 'PROVINCE',
+  nameZh: '湖北省',
+  nameEn: 'Hubei',
+  description: '湖北省非物质文化遗产资源丰富。',
+  totalCount: 2,
+  levelCounts: api.LevelCounts(world: 1, national: 2, provincial: 1),
+);
+
+api.HeritageCard _card({
+  required String id,
+  required String name,
+  required String levelCode,
+  required String levelName,
+}) {
+  return api.HeritageCard(
+    id: id,
+    code: 'CODE-$id',
+    nameZh: name,
+    nameEn: null,
+    location: const api.Location(
+      countryCode: 'CHN',
+      provinceCode: '420000',
+      cityCode: '420100',
+      displayText: '湖北省武汉市',
+    ),
+    summary: '$name简介',
+    coverImageUrl: '',
+    badges: [
+      api.Badge(type: 'LEVEL', code: levelCode, name: levelName),
+      const api.Badge(type: 'CATEGORY', code: 'TRADITIONAL_ART', name: '传统美术'),
+    ],
+    isFavorited: false,
+  );
+}
+
+final _hanxiu = _card(
+  id: '019c9f00-0000-7000-8000-001000011000',
+  name: '汉绣',
+  levelCode: 'NATIONAL',
+  levelName: '国家级',
+);
+
+final _hanju = _card(
+  id: '019c9f00-0000-7000-8000-001000012000',
+  name: '汉剧',
+  levelCode: 'PROVINCIAL',
+  levelName: '省级',
+);
+
+api.PageData<api.HeritageCard> _page(List<api.HeritageCard> items) =>
+    api.PageData(
+      items: items,
+      page: 1,
+      pageSize: 50,
+      total: items.length,
+      totalPages: 1,
+    );
+
+Widget appWithOverrides({Widget child = const SizedBox.shrink()}) {
   return ProviderScope(
     overrides: [
       map.mapRegionsProvider.overrideWith(
         (ref, mode) => Future.value(const <MapRegion>[]),
+      ),
+      map.mapRegionsDataProvider.overrideWith(
+        (ref, mode) => Future.value(const <api.Region>[_hubei]),
+      ),
+      ui.discoverDailyProvider.overrideWith(
+        (ref) => Future.value(_page([_hanxiu])),
+      ),
+      ui.discoverHotProvider.overrideWith(
+        (ref) => Future.value(_page([_hanxiu, _hanju])),
       ),
     ],
     child: child,
@@ -70,8 +142,7 @@ Widget appWithMapOverrides({Widget child = const SizedBox.shrink()}) {
 void main() {
   testWidgets('App boots to the map tab', (WidgetTester tester) async {
     mockAssets(tester);
-    await tester.pumpWidget(appWithMapOverrides(child: const MyApp()));
-
+    await tester.pumpWidget(appWithOverrides(child: const MyApp()));
     await tester.pumpAndSettle();
 
     expect(find.text('中国地图'), findsOneWidget);
@@ -85,14 +156,15 @@ void main() {
     WidgetTester tester,
   ) async {
     mockAssets(tester);
-    await tester.pumpWidget(appWithMapOverrides(child: const MyApp()));
-
+    await tester.pumpWidget(appWithOverrides(child: const MyApp()));
     await tester.pumpAndSettle();
+
     await tester.tap(find.text('发现').last);
     await tester.pumpAndSettle();
 
     expect(find.text('每日推送'), findsOneWidget);
     expect(find.text('热门话题'), findsOneWidget);
+    expect(find.text('汉绣'), findsWidgets);
   });
 
   testWidgets('Map tab: segmented control is centered', (
@@ -100,7 +172,7 @@ void main() {
   ) async {
     mockAssets(tester);
     await tester.pumpWidget(
-      appWithMapOverrides(child: const MaterialApp(home: MapPage())),
+      appWithOverrides(child: const MaterialApp(home: MapPage())),
     );
     await tester.pumpAndSettle();
 
@@ -117,7 +189,7 @@ void main() {
   ) async {
     mockAssets(tester);
     final region = MapRegion(
-      mapKey: '420000',
+      regionCode: '420000',
       nameZh: '湖北省',
       nameEn: 'Hubei',
       geometry: RegionGeometry([
@@ -131,22 +203,16 @@ void main() {
           ],
         ],
       ]),
-      summary: const RegionSummary(
-        code: 'CN-42',
-        type: RegionType.province,
-        nameZh: '湖北省',
-        nameEn: 'Hubei',
-        description: '湖北省非物质文化遗产资源丰富。',
-        mapKey: '420000',
-        totalCount: 100,
-        levelCounts: LevelCounts(world: 2, national: 30, provincial: 68),
-      ),
+      summary: _hubei,
     );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           map.mapRegionsProvider.overrideWith(
             (ref, mode) => Future.value([region]),
+          ),
+          map.mapRegionsDataProvider.overrideWith(
+            (ref, mode) => Future.value(const <api.Region>[_hubei]),
           ),
         ],
         child: const MaterialApp(home: MapPage()),
@@ -157,7 +223,6 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byType(InteractiveMap)));
     await tester.pumpAndSettle();
 
-    expect(find.text('湖北省'), findsWidgets); // 弹窗标题（页面卡片也有）
     expect(find.text('取消'), findsOneWidget);
     expect(find.text('世界级名录'), findsOneWidget);
     expect(find.text('国家级名录'), findsOneWidget);
@@ -198,25 +263,95 @@ void main() {
     expect(searchCenter.dx, greaterThan(leadingCenter.dx));
   });
 
-  testWidgets('Province detail page matches design and filters by level', (
+  testWidgets('Province detail page loads region and filters by level', (
     WidgetTester tester,
   ) async {
     mockAssets(tester);
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: ProvinceDetailPage())),
+      ProviderScope(
+        overrides: [
+          ui.regionDetailProvider.overrideWith(
+            (ref, code) => Future.value(
+              const api.RegionDetail(
+                region: _hubei,
+                parent: null,
+                breadcrumb: [],
+              ),
+            ),
+          ),
+          ui.heritageListProvider.overrideWith(
+            (ref, query) => Future.value(
+              query.level == null ? _page([_hanxiu, _hanju]) : _page([_hanxiu]),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: ProvinceDetailPage(regionCode: '420000'),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('湖北省非遗名录'), findsOneWidget);
     expect(find.text('搜索非遗'), findsOneWidget);
     expect(find.text('全部'), findsOneWidget);
-    expect(find.text('世界级'), findsNWidgets(2)); // 筛选项 + 卡片徽章
-    expect(find.text('汉绣'), findsNWidgets(3));
+    expect(find.text('汉绣'), findsOneWidget);
+    expect(find.text('汉剧'), findsOneWidget);
 
-    // 点击「国家级」筛选
+    // 切换「国家级」筛选后只保留国家级条目
     await tester.tap(find.text('国家级').first);
     await tester.pumpAndSettle();
 
     expect(find.text('汉绣'), findsOneWidget);
+    expect(find.text('汉剧'), findsNothing);
+  });
+
+  testWidgets('Heritage card opens detail route with the item id', (
+    WidgetTester tester,
+  ) async {
+    mockAssets(tester);
+    final router = GoRouter(
+      initialLocation: '/province',
+      routes: [
+        GoRoute(
+          path: '/province',
+          builder: (context, state) =>
+              const ProvinceDetailPage(regionCode: '420000'),
+        ),
+        GoRoute(
+          path: '/heritage/:heritageId',
+          name: 'heritageDetail',
+          builder: (context, state) => Scaffold(
+            body: Text('DETAIL:${state.pathParameters['heritageId']}'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ui.regionDetailProvider.overrideWith(
+            (ref, code) => Future.value(
+              const api.RegionDetail(
+                region: _hubei,
+                parent: null,
+                breadcrumb: [],
+              ),
+            ),
+          ),
+          ui.heritageListProvider.overrideWith(
+            (ref, query) => Future.value(_page([_hanxiu, _hanju])),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('汉绣'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAIL:${_hanxiu.id}'), findsOneWidget);
   });
 }

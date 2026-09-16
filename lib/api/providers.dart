@@ -83,3 +83,9 @@ final postersProvider = FutureProvider<PageData<Poster>>(
 final heritageDetailProvider = FutureProvider.family<HeritageDetail, String>(
   (ref, id) => ref.watch(heritageRepositoryProvider).detail(id),
 );
+
+/// POST /me/posters（幂等，服务端在内容未变化时复用已有海报）
+final posterCreationProvider = FutureProvider.family<CreatedPoster, String>(
+  (ref, heritageId) =>
+      ref.watch(userRepositoryProvider).createPoster(heritageId),
+);

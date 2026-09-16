@@ -133,8 +133,10 @@ class _PosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: () =>
-        context.pushNamed('heritagePoster', extra: poster.heritageItem.nameZh),
+    onTap: () => context.pushNamed(
+      'heritagePoster',
+      pathParameters: {'heritageId': poster.heritageItem.id},
+    ),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(17),
       child: Image.network(

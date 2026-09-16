@@ -14,7 +14,12 @@ class AuthRepository {
     }
     final accessToken = uri.queryParameters['accessToken'];
     final refreshToken = uri.queryParameters['refreshToken'];
-    if (accessToken == null || accessToken.isEmpty || refreshToken == null || refreshToken.isEmpty) return null;
+    if (accessToken == null ||
+        accessToken.isEmpty ||
+        refreshToken == null ||
+        refreshToken.isEmpty) {
+      return null;
+    }
     return (accessToken: accessToken, refreshToken: refreshToken);
   }
 }

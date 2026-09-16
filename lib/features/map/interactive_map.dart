@@ -82,8 +82,8 @@ class _InteractiveMapState extends State<InteractiveMap>
   void didUpdateWidget(covariant InteractiveMap oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.regions, widget.regions)) {
-      final oldKeys = {for (final r in oldWidget.regions) r.mapKey};
-      final newKeys = {for (final r in widget.regions) r.mapKey};
+      final oldKeys = {for (final r in oldWidget.regions) r.regionCode};
+      final newKeys = {for (final r in widget.regions) r.regionCode};
       if (!setEquals(oldKeys, newKeys)) {
         _refreshPaintData();
         _initialized = false;
@@ -108,7 +108,7 @@ class _InteractiveMapState extends State<InteractiveMap>
 
   GeoBounds? _findFocusBounds() {
     for (final region in widget.regions) {
-      if (region.mapKey == 'CHN') {
+      if (region.regionCode == 'CHN') {
         final b = region.geometry.bounds;
         return GeoBounds(
           minX: b.minX,
@@ -124,7 +124,9 @@ class _InteractiveMapState extends State<InteractiveMap>
   void _fitToSelected() {
     final key = widget.selectedKey;
     if (key == null) return;
-    final info = _paintInfos?.where((i) => i.region.mapKey == key).firstOrNull;
+    final info = _paintInfos
+        ?.where((i) => i.region.regionCode == key)
+        .firstOrNull;
     if (info != null) _animateTo(info.bounds);
   }
 

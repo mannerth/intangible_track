@@ -10,7 +10,7 @@ import 'package:intangible_track/features/map/models.dart';
 
 MapRegion _squareRegion(String key, String name) {
   return MapRegion(
-    mapKey: key,
+    regionCode: key,
     nameZh: name,
     geometry: RegionGeometry([
       [
@@ -42,7 +42,7 @@ void main() {
 
     test('hit test inside / outside / tolerance', () {
       final regions = [_squareRegion('A', '甲')];
-      expect(hitTestRegion(regions, const Offset(5, -5))?.mapKey, 'A');
+      expect(hitTestRegion(regions, const Offset(5, -5))?.regionCode, 'A');
       expect(hitTestRegion(regions, const Offset(50, -50)), isNull);
       // 紧邻边界时通过容差命中
       expect(
@@ -50,7 +50,7 @@ void main() {
           regions,
           const Offset(10.001, -5),
           toleranceMap: 0.01,
-        )?.mapKey,
+        )?.regionCode,
         'A',
       );
     });
@@ -59,7 +59,7 @@ void main() {
   group('label anchor', () {
     test('prefers data anchor over centroid', () {
       final region = MapRegion(
-        mapKey: 'A',
+        regionCode: 'A',
         nameZh: '甲',
         geometry: RegionGeometry([
           [
@@ -165,7 +165,7 @@ void main() {
       await tester.tapAt(const Offset(200, 150));
       await tester.pumpAndSettle();
 
-      expect(tapped?.mapKey, 'A');
+      expect(tapped?.regionCode, 'A');
     });
 
     testWidgets('tap outside region does not report', (tester) async {

@@ -23,9 +23,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (!session.hasValue || !session.value!.ready) return null;
       if (protected && !session.value!.signedIn) {
         // 保留被拦截的完整地址，登录成功后回到用户原本要访问的页面。
-        return Uri(path: '/login', queryParameters: {
-          'returnTo': state.uri.toString(),
-        }).toString();
+        return Uri(
+          path: '/login',
+          queryParameters: {'returnTo': state.uri.toString()},
+        ).toString();
       }
       if (path == '/login' && session.value!.signedIn) {
         final returnTo = state.uri.queryParameters['returnTo'];
@@ -48,9 +49,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const MapPage(),
                 routes: [
                   GoRoute(
-                    path: 'province',
+                    path: 'province/:regionCode',
                     name: 'provinceDetail',
-                    builder: (context, state) => const ProvinceDetailPage(),
+                    builder: (context, state) => ProvinceDetailPage(
+                      regionCode: state.pathParameters['regionCode']!,
+                    ),
                   ),
                 ],
               ),
@@ -91,22 +94,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         name: 'login',
-        builder: (context, state) => LoginPage(
-          returnTo: state.uri.queryParameters['returnTo'],
-        ),
+        builder: (context, state) =>
+            LoginPage(returnTo: state.uri.queryParameters['returnTo']),
       ),
       // 详情类页面置于 shell 之外，进入后不显示底部导航栏。
       GoRoute(
-        path: '/heritage',
+        path: '/heritage/:heritageId',
         name: 'heritageDetail',
         builder: (context, state) =>
-            HeritageDetailPage(title: state.extra as String? ?? '非遗详情'),
+            HeritageDetailPage(heritageId: state.pathParameters['heritageId']!),
         routes: [
           GoRoute(
             path: 'poster',
             name: 'heritagePoster',
-            builder: (context, state) =>
-                HeritagePosterPage(title: state.extra as String? ?? '汉绣'),
+            builder: (context, state) => HeritagePosterPage(
+              heritageId: state.pathParameters['heritageId']!,
+            ),
           ),
         ],
       ),
